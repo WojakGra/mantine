@@ -410,6 +410,7 @@ class MantineLLMCompiler {
       charts: '@mantine/charts',
       x: '@mantine/x',
       form: '@mantine/form',
+      schedule: '@mantine/schedule',
       guides: null,
       theming: null,
       styles: null,
@@ -445,6 +446,8 @@ class MantineLLMCompiler {
       theming: [] as string[],
       styles: [] as string[],
       x: [] as string[],
+      form: [] as string[],
+      schedule: [] as string[],
       other: [] as string[],
     };
 
@@ -2005,8 +2008,10 @@ Additional information about ${component} component.`;
     const categoryOrder = [
       'core',
       'hooks',
+      'form',
       'dates',
       'charts',
+      'schedule',
       'guides',
       'theming',
       'styles',

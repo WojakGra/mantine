@@ -74,7 +74,10 @@
     "compile:llm:alpha": "LLM_DOCS_SITE_URL=https://alpha.mantine.dev tsx scripts/llm/compile-llm-doc.ts",
     "compile:mcp": "tsx scripts/llm/compile-mcp-data.ts",
     "compile:mcp:alpha": "MCP_DOCS_SITE_URL=https://alpha.mantine.dev tsx scripts/llm/compile-mcp-data.ts",
-    "mcp:smoke:local": "npm run compile:mcp && yarn exec tsx scripts/build mcp-server && tsx scripts/llm/mcp-local-smoke.ts"
+    "mcp:smoke:local": "npm run compile:mcp && yarn exec tsx scripts/build mcp-server && tsx scripts/llm/mcp-local-smoke.ts",
+    "docs:build:v7": "npm run docs:docgen && cd apps/mantine.dev && npm run build:v7",
+    "docs:build:v8": "npm run docs:docgen && cd apps/mantine.dev && npm run build:v8",
+    "docs:deploy:v8": "npm run docs:build:v8 && wrangler pages deploy apps/mantine.dev/out --branch master --project-name v8-mantine-docs"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",

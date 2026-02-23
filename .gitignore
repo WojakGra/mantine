@@ -64,6 +64,7 @@ apps/mantine.dev/public/llms
 apps/mantine.dev/public/mcp
 .samples
 .changelog
+apps/help.mantine.dev/next-env.d.ts
 
 .claude/reviews
 .claude/plans

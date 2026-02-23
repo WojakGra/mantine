@@ -134,12 +134,10 @@ export const Spotlight = factory<SpotlightFactory>((_props) => {
   return (
     <SpotlightRoot {...others} query={_query} onQueryChange={setQuery}>
       <SpotlightSearch {...searchProps} />
-      <SpotlightActionsList {...(scrollAreaProps as any)}>
-        {filteredActions}
-        {filteredActions.length === 0 && nothingFound && (
-          <SpotlightEmpty>{nothingFound}</SpotlightEmpty>
-        )}
-      </SpotlightActionsList>
+      {filteredActions.length > 0 && (
+        <SpotlightActionsList {...(scrollAreaProps as any)}>{filteredActions}</SpotlightActionsList>
+      )}
+      {filteredActions.length === 0 && nothingFound && <SpotlightEmpty>{nothingFound}</SpotlightEmpty>}
     </SpotlightRoot>
   );
 });

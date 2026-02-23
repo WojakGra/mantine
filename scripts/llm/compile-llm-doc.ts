@@ -1619,11 +1619,44 @@ Additional information about ${component} component.`;
     });
 
     for (const file of faqFiles) {
-      await this.processSingleFaq(file);
+      const sectionStart = this.output.length;
+      const pageInfo = await this.processSingleFaq(file);
+      const sectionEnd = this.output.length;
+
+      if (pageInfo) {
+        const sectionLines = this.output.slice(sectionStart, sectionEnd);
+
+        while (sectionLines.length > 0 && sectionLines[sectionLines.length - 1].trim() === '') {
+          sectionLines.pop();
+        }
+
+        if (sectionLines.length > 0 && sectionLines[sectionLines.length - 1] === '-'.repeat(40)) {
+          sectionLines.pop();
+        }
+
+        while (sectionLines.length > 0 && sectionLines[sectionLines.length - 1].trim() === '') {
+          sectionLines.pop();
+        }
+
+        const relativePath = path.relative(this.config.mdxPaths.help, file);
+        const faqRoute = `/q${this.getRouteFromRelative(relativePath)}`;
+        const fileName = this.getPageFileName(faqRoute);
+
+        this.pageFiles.push({
+          category: 'faq',
+          title: pageInfo.title,
+          description: pageInfo.description,
+          route: faqRoute,
+          fileName,
+          content: sectionLines.join('\n'),
+        });
+      }
     }
   }
 
-  private async processSingleFaq(filePath: string) {
+  private async processSingleFaq(
+    filePath: string
+  ): Promise<{ title: string; description?: string } | null> {
     try {
       const content = await fs.readFile(filePath, 'utf-8');
 
@@ -1663,8 +1696,10 @@ Additional information about ${component} component.`;
       this.output.push('');
       this.output.push('-'.repeat(40));
       this.output.push('');
+      return { title: title || path.basename(filePath, '.mdx'), description: description || undefined };
     } catch (error) {
       // Error processing FAQ
+      return null;
     }
   }
 
@@ -2025,6 +2060,27 @@ Additional information about ${component} component.`;
       const list = pagesByCategory.get(page.category) || [];
       list.push(page);
       pagesByCategory.set(page.category, list);
+    }
+
+    const faqPages = pagesByCategory.get('faq');
+    if (faqPages && faqPages.length > 0) {
+      lines.push('## FAQ');
+      lines.push('');
+
+      const sortedFaqPages = [...faqPages].sort((a, b) => a.title.localeCompare(b.title));
+
+      for (const page of sortedFaqPages) {
+        const url = `${this.config.siteUrl.replace(/\/+$/, '')}/llms/${page.fileName}`;
+        const description = page.description?.trim();
+
+        if (description) {
+          lines.push(`- [${page.title}](${url}): ${description}`);
+        } else {
+          lines.push(`- [${page.title}](${url})`);
+        }
+      }
+
+      lines.push('');
     }
 
     for (const category of categoryOrder) {

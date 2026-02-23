@@ -59,3 +59,4 @@ apps/mantine.dev/public/llms.txt
 apps/mantine.dev/public/llms-full.txt
 apps/mantine.dev/public/llms
 .samples
+apps/help.mantine.dev/next-env.d.ts

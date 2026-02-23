@@ -81,6 +81,34 @@ function Demo() {
 }
 ```
 
+## Light variant color resolver changes
+
+In Mantine 9, the `light` variant color resolution was changed. If you need to keep 8.x behavior
+for the `light` variant during migration, use `v8defaultVariantColorsResolver`:
+
+```tsx
+import {
+  Button,
+  MantineProvider,
+  createTheme,
+  v8defaultVariantColorsResolver,
+} from '@mantine/core';
+
+const theme = createTheme({
+  variantColorResolver: v8defaultVariantColorsResolver,
+});
+
+function Demo() {
+  return (
+    <MantineProvider theme={theme}>
+      <Button variant="light" color="blue.6">
+        Uses 8.x light variant colors
+      </Button>
+    </MantineProvider>
+  );
+}
+```
+
 ## Form resolvers
 
 The `@mantine/form` package no longer exports schema resolvers; use [dedicated packages](/form/schema-validation/) instead:

@@ -459,7 +459,10 @@ Basic server configuration:
   "mcpServers": {
     "mantine": {
       "command": "npx",
-      "args": ["-y", "@mantine/mcp-server"]
+      "args": ["-y", "@mantine/mcp-server"],
+      "env": {
+        "MANTINE_MCP_DATA_URL": "https://alpha.mantine.dev/mcp"
+      }
     }
   }
 }

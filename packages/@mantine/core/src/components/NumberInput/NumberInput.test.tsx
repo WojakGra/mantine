@@ -500,4 +500,121 @@ describe('@mantine/core/NumberInput', () => {
       expect.anything()
     );
   });
+
+  it('renders bigint values and preserves formatting options', () => {
+    render(
+      <NumberInput defaultValue={BigInt('12345678901234567890')} thousandSeparator="," prefix="$" />
+    );
+
+    expectValue('$12,345,678,901,234,567,890');
+  });
+
+  it('returns bigint in bigint mode for valid integer input', async () => {
+    const spy = jest.fn();
+    render(<NumberInput defaultValue={BigInt(0)} onChange={spy} />);
+
+    focusInput();
+    await enterText('{backspace}');
+    await enterText('123');
+
+    expect(spy).toHaveBeenLastCalledWith(BigInt(123));
+  });
+
+  it('returns string fallback in bigint mode for intermediate input', async () => {
+    const spy = jest.fn();
+    render(<NumberInput defaultValue={BigInt(0)} onChange={spy} />);
+
+    focusInput();
+    await enterText('{backspace}');
+    expect(spy).toHaveBeenLastCalledWith('');
+
+    await enterText('-');
+    expect(spy).toHaveBeenLastCalledWith('-');
+  });
+
+  it('supports bigint increment/decrement with handlersRef', () => {
+    const ref = createRef<NumberInputHandlers>();
+    const spy = jest.fn();
+    render(
+      <NumberInput
+        step={BigInt(2)}
+        startValue={BigInt(4)}
+        defaultValue={BigInt(0)}
+        onChange={spy}
+        handlersRef={ref}
+      />
+    );
+
+    act(() => ref.current?.increment());
+    expect(spy).toHaveBeenLastCalledWith(BigInt(2));
+
+    act(() => ref.current?.increment());
+    expect(spy).toHaveBeenLastCalledWith(BigInt(4));
+
+    act(() => ref.current?.decrement());
+    expect(spy).toHaveBeenLastCalledWith(BigInt(2));
+  });
+
+  it('supports bigint keyboard stepping and min/max callbacks', async () => {
+    const minSpy = jest.fn();
+    const maxSpy = jest.fn();
+    render(
+      <NumberInput
+        defaultValue={BigInt(9)}
+        min={BigInt(0)}
+        max={BigInt(10)}
+        step={BigInt(2)}
+        onMinReached={minSpy}
+        onMaxReached={maxSpy}
+      />
+    );
+
+    focusInput();
+    await enterText('{arrowup}');
+    expectValue('10');
+    expect(maxSpy).toHaveBeenCalledTimes(1);
+
+    await enterText('{arrowdown}');
+    await enterText('{arrowdown}');
+    await enterText('{arrowdown}');
+    await enterText('{arrowdown}');
+    await enterText('{arrowdown}');
+    await enterText('{arrowdown}');
+    expectValue('0');
+    expect(minSpy).toHaveBeenCalled();
+  });
+
+  it('supports bigint strict and blur clamping', async () => {
+    const strictSpy = jest.fn();
+    render(
+      <NumberInput
+        defaultValue={BigInt(5)}
+        min={BigInt(0)}
+        max={BigInt(10)}
+        clampBehavior="strict"
+        onChange={strictSpy}
+      />
+    );
+
+    focusInput();
+    await enterText('{backspace}{backspace}11');
+    expect(strictSpy).toHaveBeenLastCalledWith(BigInt(1));
+    expectValue('1');
+
+    const blurSpy = jest.fn();
+    render(
+      <NumberInput
+        defaultValue={BigInt(0)}
+        min={BigInt(0)}
+        max={BigInt(10)}
+        clampBehavior="blur"
+        onChange={blurSpy}
+      />
+    );
+    const inputs = screen.getAllByRole('textbox');
+    fireEvent.focus(inputs[1]);
+    await userEvent.type(inputs[1], '{backspace}999');
+    fireEvent.blur(inputs[1]);
+    expect(inputs[1]).toHaveValue('10');
+  });
 });

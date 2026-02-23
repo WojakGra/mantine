@@ -76,11 +76,24 @@ it is not possible to represent the value as a number:
 - Numbers that are larger than `Number.MAX_SAFE_INTEGER - 1` or smaller than `Number.MIN_SAFE_INTEGER + 1` are represented as strings – `'90071992547409910'`
 - Numbers with trailing decimal separators or trailing decimal zeros are represented as strings – `0.`, `0.0`, `-0.00`, etc.
 
+## BigInt values
+
+`NumberInput` also supports `bigint` values. BigInt mode is inferred from `value` or `defaultValue`:
+
+- `value`/`defaultValue` can be `bigint | string`
+- `onChange` receives `bigint | string`
+- `min`, `max`, `step`, and `startValue` support `bigint`
+- BigInt mode is integer-only (`allowDecimal`/decimal formatting props do not enable decimal parsing)
+
+`string` is still used as a fallback for intermediate states (for example `''` or `'-'`).
+
+<Demo data={NumberInputDemos.bigInt} />
+
 ## onChange vs onValueChange
 
 `NumberInput` provides two callback props for handling value changes:
 
-- **`onChange`**: Receives a simplified value as `number | string`. This is the recommended callback for most use cases. The value is a number when possible, and a string in edge cases (empty input, very large numbers, trailing decimals).
+- **`onChange`**: Receives a simplified value (`number | string` in default mode, `bigint | string` in BigInt mode). This is the recommended callback for most use cases. The value is a number/bigint when possible, and a string in edge cases (empty input, very large numbers, trailing decimals, intermediate BigInt input states).
 
 - **`onValueChange`**: Receives the full payload from `react-number-format`, which includes:
   - `floatValue`: The numeric value (or `undefined`)

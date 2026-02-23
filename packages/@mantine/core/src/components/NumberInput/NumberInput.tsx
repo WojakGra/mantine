@@ -6,8 +6,8 @@ import {
   BoxProps,
   createVarsResolver,
   ElementProps,
-  factory,
   Factory,
+  genericFactory,
   getSize,
   noop,
   StylesApiProps,
@@ -39,8 +39,18 @@ export interface NumberInputHandlers {
   decrement: () => void;
 }
 
+export type NumberInputMode = 'number' | 'bigint';
+export type NumberInputNumericType = number | bigint;
+export type NumberInputValue<T extends NumberInputNumericType = number> = T | string;
+type NumberInputNumericValue<T extends NumberInputNumericType = number> = T;
+type InternalNumberInputValue = string | number | bigint;
+
 function isNumberString(value: unknown) {
   return typeof value === 'string' && value !== '' && !Number.isNaN(Number(value));
+}
+
+function isBigIntValue(value: unknown): value is bigint {
+  return typeof value === 'bigint';
 }
 
 function canStep(value: number | string) {
@@ -49,6 +59,66 @@ function canStep(value: number | string) {
   }
 
   return value === '' || (isNumberString(value) && Number(value) < Number.MAX_SAFE_INTEGER);
+}
+
+function isValidBigIntString(value: string, allowNegative: boolean) {
+  if (value === '') {
+    return false;
+  }
+
+  if (value === '-') {
+    return false;
+  }
+
+  if (!allowNegative && value.startsWith('-')) {
+    return false;
+  }
+
+  return /^-?\d+$/.test(value);
+}
+
+function canStepBigInt(value: bigint | string, allowNegative: boolean) {
+  if (typeof value === 'bigint') {
+    return true;
+  }
+
+  return value === '' || isValidBigIntString(value, allowNegative);
+}
+
+function parseBigIntFromString(value: string): bigint | null {
+  if (!/^-?\d+$/.test(value)) {
+    return null;
+  }
+
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
+function toBigIntOrUndefined(value: unknown): bigint | undefined {
+  if (typeof value === 'bigint') {
+    return value;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value)) {
+    return BigInt(value);
+  }
+
+  return undefined;
+}
+
+function clampBigInt(value: bigint, min?: bigint, max?: bigint) {
+  if (min !== undefined && value < min) {
+    return min;
+  }
+
+  if (max !== undefined && value > max) {
+    return max;
+  }
+
+  return value;
 }
 
 function getTotalDigits(inputValue: string | number): number {
@@ -84,20 +154,20 @@ export type NumberInputCssVariables = {
   controls: '--ni-chevron-size';
 };
 
-export interface NumberInputProps
+export interface NumberInputProps<T extends NumberInputNumericType = number>
   extends
     BoxProps,
     Omit<__BaseInputProps, 'pointer'>,
     StylesApiProps<NumberInputFactory>,
-    ElementProps<'input', 'size' | 'type' | 'onChange'> {
+    ElementProps<'input', 'size' | 'type' | 'onChange' | 'value' | 'defaultValue' | 'min' | 'max' | 'step'> {
   /** Controlled component value */
-  value?: number | string;
+  value?: NumberInputValue<T>;
 
   /** Uncontrolled component default value */
-  defaultValue?: number | string;
+  defaultValue?: NumberInputValue<T>;
 
   /** Called when value changes */
-  onChange?: (value: number | string) => void;
+  onChange?: (value: NumberInputValue<T>) => void;
 
   /** Called when value changes with `react-number-format` payload */
   onValueChange?: OnValueChange;
@@ -142,13 +212,13 @@ export interface NumberInputProps
   thousandSeparator?: string | boolean;
 
   /** Minimum possible value */
-  min?: number;
+  min?: NumberInputNumericValue<T>;
 
   /** Maximum possible value */
-  max?: number;
+  max?: NumberInputNumericValue<T>;
 
   /** Number by which value will be incremented/decremented with up/down controls and keyboard arrows @default 1 */
-  step?: number;
+  step?: NumberInputNumericValue<T>;
 
   /** If set, the up/down controls are hidden @default false */
   hideControls?: boolean;
@@ -167,7 +237,7 @@ export interface NumberInputProps
   handlersRef?: React.Ref<NumberInputHandlers | undefined>;
 
   /** Value used when incrementing/decrementing an empty input. If `min` is set and `startValue < min`, `min` is used instead. @default 0 */
-  startValue?: number;
+  startValue?: NumberInputNumericValue<T>;
 
   /** Interval in milliseconds between value steps when increment/decrement button is held down. Can be a number or a function `(stepCount) => number` for dynamic intervals. Requires `stepHoldDelay` to be set. @default undefined */
   stepHoldInterval?: number | ((stepCount: number) => number);
@@ -197,6 +267,7 @@ export type NumberInputFactory = Factory<{
   stylesNames: NumberInputStylesNames;
   vars: NumberInputCssVariables;
   variant: InputVariant;
+  signature: <T extends NumberInputNumericType = number>(props: NumberInputProps<T>) => React.JSX.Element;
 }>;
 
 const defaultProps = {
@@ -209,7 +280,7 @@ const defaultProps = {
   trimLeadingZeroesOnBlur: true,
   startValue: 0,
   allowedDecimalSeparators: ['.', ','],
-} satisfies Partial<NumberInputProps>;
+} satisfies Partial<NumberInputProps<number | bigint>>;
 
 const varsResolver = createVarsResolver<NumberInputFactory>((_, { size }) => ({
   controls: {
@@ -242,8 +313,32 @@ function clampAndSanitizeInput(sanitizedValue: string | number, max?: number, mi
   return clamped;
 }
 
-export const NumberInput = factory<NumberInputFactory>((_props) => {
-  const props = useProps('NumberInput', defaultProps, _props);
+function clampAndSanitizeBigIntInput(
+  sanitizedValue: string,
+  options: { min?: bigint; max?: bigint; clampBehavior: NumberInputProps['clampBehavior'] }
+) {
+  if (sanitizedValue === '' || sanitizedValue === '-') {
+    return sanitizedValue;
+  }
+
+  const parsed = parseBigIntFromString(sanitizedValue);
+
+  if (parsed === null) {
+    return sanitizedValue;
+  }
+
+  return options.clampBehavior === 'blur'
+    ? clampBigInt(parsed, options.min, options.max)
+    : parsed;
+}
+
+export const NumberInput = genericFactory<NumberInputFactory>(
+  <T extends NumberInputNumericType = number,>(_props: NumberInputProps<T>) => {
+  const props = useProps(
+    'NumberInput',
+    defaultProps as Partial<NumberInputProps>,
+    _props as unknown as NumberInputProps
+  );
   const {
     className,
     classNames,
@@ -288,11 +383,13 @@ export const NumberInput = factory<NumberInputFactory>((_props) => {
     ref,
     ...others
   } = props;
+  const allowNegativeResolved = allowNegative ?? true;
+  const allowLeadingZerosResolved = allowLeadingZeros ?? true;
 
   const getStyles = useStyles<NumberInputFactory>({
     name: 'NumberInput',
     classes,
-    props,
+    props: props as NumberInputProps,
     classNames,
     styles,
     unstyled,
@@ -304,14 +401,26 @@ export const NumberInput = factory<NumberInputFactory>((_props) => {
   const { resolvedClassNames, resolvedStyles } = useResolvedStylesApi<NumberInputFactory>({
     classNames,
     styles,
-    props,
+    props: props as NumberInputProps,
   });
 
-  const [_value, setValue] = useUncontrolled({
-    value,
-    defaultValue,
+  const valueModeRef = useRef<NumberInputMode>(
+    isBigIntValue(value) || isBigIntValue(defaultValue) ? 'bigint' : 'number'
+  );
+
+  if (isBigIntValue(value)) {
+    valueModeRef.current = 'bigint';
+  } else if (typeof value === 'number') {
+    valueModeRef.current = 'number';
+  }
+
+  const isBigIntMode = valueModeRef.current === 'bigint';
+
+  const [_value, setValue] = useUncontrolled<InternalNumberInputValue>({
+    value: value as InternalNumberInputValue | undefined,
+    defaultValue: defaultValue as InternalNumberInputValue | undefined,
     finalValue: '',
-    onChange,
+    onChange: onChange as ((value: InternalNumberInputValue) => void) | undefined,
   });
 
   const shouldUseStepInterval = stepHoldDelay !== undefined && stepHoldInterval !== undefined;
@@ -319,17 +428,48 @@ export const NumberInput = factory<NumberInputFactory>((_props) => {
   const onStepTimeoutRef = useRef<number | null>(null);
   const stepCountRef = useRef<number>(0);
 
+  const minNumber = typeof min === 'number' ? min : undefined;
+  const maxNumber = typeof max === 'number' ? max : undefined;
+  const stepNumber = typeof step === 'number' ? step : defaultProps.step;
+  const startValueNumber = typeof startValue === 'number' ? startValue : defaultProps.startValue;
+
+  const minBigInt = toBigIntOrUndefined(min);
+  const maxBigInt = toBigIntOrUndefined(max);
+  const stepBigInt = toBigIntOrUndefined(step) ?? BigInt(1);
+  const startValueBigInt = toBigIntOrUndefined(startValue) ?? BigInt(0);
+
+  const parseBigIntOrString = (inputValue: string): bigint | string => {
+    if (
+      !isValidBigIntString(inputValue, allowNegativeResolved) ||
+      (allowLeadingZerosResolved && leadingZerosPattern.test(inputValue))
+    ) {
+      return inputValue;
+    }
+
+    const parsed = parseBigIntFromString(inputValue);
+    return parsed ?? inputValue;
+  };
+
+  const getBigIntFloatValue = (inputValue: bigint) => {
+    const numericValue = Number(inputValue);
+    return Number.isSafeInteger(numericValue) ? numericValue : undefined;
+  };
+
   const handleValueChange: OnValueChange = (payload, event) => {
     if (event.source === 'event') {
-      setValue(
-        isValidNumber(payload.floatValue, payload.value) &&
-          !leadingDecimalZeroPattern.test(payload.value) &&
-          !(allowLeadingZeros ? leadingZerosPattern.test(payload.value) : false) &&
-          !trailingZerosPattern.test(payload.value) &&
-          !trailingDecimalSeparatorPattern.test(payload.value)
-          ? payload.floatValue
-          : payload.value
-      );
+      if (isBigIntMode) {
+        setValue(parseBigIntOrString(payload.value));
+      } else {
+        setValue(
+          isValidNumber(payload.floatValue, payload.value) &&
+            !leadingDecimalZeroPattern.test(payload.value) &&
+            !(allowLeadingZerosResolved ? leadingZerosPattern.test(payload.value) : false) &&
+            !trailingZerosPattern.test(payload.value) &&
+            !trailingDecimalSeparatorPattern.test(payload.value)
+            ? payload.floatValue
+            : payload.value
+        );
+      }
     }
     onValueChange?.(payload, event);
   };
@@ -350,27 +490,68 @@ export const NumberInput = factory<NumberInputFactory>((_props) => {
 
   const incrementRef = useRef<() => void>(noop);
   incrementRef.current = () => {
-    if (!canStep(_value)) {
+    if (isBigIntMode) {
+      if (!canStepBigInt(_value as bigint | string, allowNegativeResolved)) {
+        return;
+      }
+
+      let val: bigint;
+      const currentValue = _value;
+
+      if (typeof currentValue === 'bigint') {
+        const incrementedValue = currentValue + stepBigInt;
+        if (maxBigInt !== undefined && incrementedValue > maxBigInt) {
+          onMaxReached?.();
+        }
+        val =
+          maxBigInt !== undefined && incrementedValue > maxBigInt ? maxBigInt : incrementedValue;
+      } else if (typeof currentValue === 'string' && currentValue !== '') {
+        const parsed = parseBigIntFromString(currentValue);
+        if (parsed === null) {
+          return;
+        }
+
+        const incrementedValue = parsed + stepBigInt;
+        if (maxBigInt !== undefined && incrementedValue > maxBigInt) {
+          onMaxReached?.();
+        }
+        val =
+          maxBigInt !== undefined && incrementedValue > maxBigInt ? maxBigInt : incrementedValue;
+      } else {
+        val = clampBigInt(startValueBigInt, minBigInt, maxBigInt);
+      }
+
+      const formattedValue = val.toString();
+      setValue(val);
+      onValueChange?.(
+        { floatValue: getBigIntFloatValue(val), formattedValue, value: formattedValue },
+        { source: 'increment' as any }
+      );
+      setTimeout(() => adjustCursor(inputRef.current?.value.length), 0);
+      return;
+    }
+
+    if (!canStep(_value as number | string)) {
       return;
     }
 
     let val: number;
-    const currentValuePrecision = getDecimalPlaces(_value);
-    const stepPrecision = getDecimalPlaces(step);
+    const currentValuePrecision = getDecimalPlaces(_value as number | string);
+    const stepPrecision = getDecimalPlaces(stepNumber);
     const maxPrecision = Math.max(currentValuePrecision, stepPrecision);
     const factor = 10 ** maxPrecision;
 
     if (!isNumberString(_value) && (typeof _value !== 'number' || Number.isNaN(_value))) {
-      val = clamp(startValue, min, max);
-    } else if (max !== undefined) {
+      val = clamp(startValueNumber, minNumber, maxNumber);
+    } else if (maxNumber !== undefined) {
       const incrementedValue =
-        (Math.round(Number(_value) * factor) + Math.round(step * factor)) / factor;
-      if (incrementedValue > max) {
+        (Math.round(Number(_value) * factor) + Math.round(stepNumber * factor)) / factor;
+      if (incrementedValue > maxNumber) {
         onMaxReached?.();
       }
-      val = incrementedValue <= max ? incrementedValue : max;
+      val = incrementedValue <= maxNumber ? incrementedValue : maxNumber;
     } else {
-      val = (Math.round(Number(_value) * factor) + Math.round(step * factor)) / factor;
+      val = (Math.round(Number(_value) * factor) + Math.round(stepNumber * factor)) / factor;
     }
 
     const formattedValue = val.toFixed(maxPrecision);
@@ -384,22 +565,64 @@ export const NumberInput = factory<NumberInputFactory>((_props) => {
 
   const decrementRef = useRef<() => void>(noop);
   decrementRef.current = () => {
-    if (!canStep(_value)) {
+    if (isBigIntMode) {
+      if (!canStepBigInt(_value as bigint | string, allowNegativeResolved)) {
+        return;
+      }
+
+      let val: bigint;
+      const minValue =
+        minBigInt !== undefined ? minBigInt : !allowNegativeResolved ? BigInt(0) : undefined;
+      const currentValue = _value;
+
+      if (typeof currentValue === 'bigint') {
+        const decrementedValue = currentValue - stepBigInt;
+        if (minValue !== undefined && decrementedValue < minValue) {
+          onMinReached?.();
+        }
+        val = minValue !== undefined && decrementedValue < minValue ? minValue : decrementedValue;
+      } else if (typeof currentValue === 'string' && currentValue !== '') {
+        const parsed = parseBigIntFromString(currentValue);
+        if (parsed === null) {
+          return;
+        }
+
+        const decrementedValue = parsed - stepBigInt;
+        if (minValue !== undefined && decrementedValue < minValue) {
+          onMinReached?.();
+        }
+        val = minValue !== undefined && decrementedValue < minValue ? minValue : decrementedValue;
+      } else {
+        val = clampBigInt(startValueBigInt, minValue, maxBigInt);
+      }
+
+      const formattedValue = val.toString();
+      setValue(val);
+      onValueChange?.(
+        { floatValue: getBigIntFloatValue(val), formattedValue, value: formattedValue },
+        { source: 'decrement' as any }
+      );
+      setTimeout(() => adjustCursor(inputRef.current?.value.length), 0);
+      return;
+    }
+
+    if (!canStep(_value as number | string)) {
       return;
     }
 
     let val: number;
-    const minValue = min !== undefined ? min : !allowNegative ? 0 : Number.MIN_SAFE_INTEGER;
-    const currentValuePrecision = getDecimalPlaces(_value);
-    const stepPrecision = getDecimalPlaces(step);
+    const minValue =
+      minNumber !== undefined ? minNumber : !allowNegativeResolved ? 0 : Number.MIN_SAFE_INTEGER;
+    const currentValuePrecision = getDecimalPlaces(_value as number | string);
+    const stepPrecision = getDecimalPlaces(stepNumber);
     const maxPrecision = Math.max(currentValuePrecision, stepPrecision);
     const factor = 10 ** maxPrecision;
 
     if ((!isNumberString(_value) && typeof _value !== 'number') || Number.isNaN(_value)) {
-      val = clamp(startValue, minValue, max);
+      val = clamp(startValueNumber, minValue, maxNumber);
     } else {
       const decrementedValue =
-        (Math.round(Number(_value) * factor) - Math.round(step * factor)) / factor;
+        (Math.round(Number(_value) * factor) - Math.round(stepNumber * factor)) / factor;
       if (minValue !== undefined && decrementedValue < minValue) {
         onMinReached?.();
       }
@@ -454,16 +677,30 @@ export const NumberInput = factory<NumberInputFactory>((_props) => {
   const handleBlur = (event: React.FocusEvent<HTMLInputElement>) => {
     let sanitizedValue = _value;
 
-    if (clampBehavior === 'blur' && typeof sanitizedValue === 'number') {
-      sanitizedValue = clamp(sanitizedValue, min, max);
-    }
+    if (isBigIntMode) {
+      if (clampBehavior === 'blur' && typeof sanitizedValue === 'bigint') {
+        sanitizedValue = clampBigInt(sanitizedValue, minBigInt, maxBigInt);
+      }
 
-    if (
-      trimLeadingZeroesOnBlur &&
-      typeof sanitizedValue === 'string' &&
-      getDecimalPlaces(sanitizedValue) < 15
-    ) {
-      sanitizedValue = clampAndSanitizeInput(sanitizedValue, max, min);
+      if (trimLeadingZeroesOnBlur && typeof sanitizedValue === 'string') {
+        sanitizedValue = clampAndSanitizeBigIntInput(sanitizedValue, {
+          min: minBigInt,
+          max: maxBigInt,
+          clampBehavior,
+        });
+      }
+    } else {
+      if (clampBehavior === 'blur' && typeof sanitizedValue === 'number') {
+        sanitizedValue = clamp(sanitizedValue, minNumber, maxNumber);
+      }
+
+      if (
+        trimLeadingZeroesOnBlur &&
+        typeof sanitizedValue === 'string' &&
+        getDecimalPlaces(sanitizedValue) < 15
+      ) {
+        sanitizedValue = clampAndSanitizeInput(sanitizedValue, maxNumber, minNumber);
+      }
     }
 
     if (_value !== sanitizedValue) {
@@ -522,7 +759,11 @@ export const NumberInput = factory<NumberInputFactory>((_props) => {
         {...getStyles('control')}
         tabIndex={-1}
         aria-hidden
-        disabled={disabled || (typeof _value === 'number' && max !== undefined && _value >= max)}
+        disabled={
+          disabled ||
+          (typeof _value === 'number' && maxNumber !== undefined && _value >= maxNumber) ||
+          (typeof _value === 'bigint' && maxBigInt !== undefined && _value >= maxBigInt)
+        }
         mod={{ direction: 'up' }}
         onMouseDown={(event) => event.preventDefault()}
         onPointerDown={(event) => {
@@ -537,7 +778,11 @@ export const NumberInput = factory<NumberInputFactory>((_props) => {
         {...getStyles('control')}
         tabIndex={-1}
         aria-hidden
-        disabled={disabled || (typeof _value === 'number' && min !== undefined && _value <= min)}
+        disabled={
+          disabled ||
+          (typeof _value === 'number' && minNumber !== undefined && _value <= minNumber) ||
+          (typeof _value === 'bigint' && minBigInt !== undefined && _value <= minBigInt)
+        }
         mod={{ direction: 'down' }}
         onMouseDown={(event) => event.preventDefault()}
         onPointerDown={(event) => {
@@ -557,21 +802,27 @@ export const NumberInput = factory<NumberInputFactory>((_props) => {
       allowNegative={allowNegative}
       className={cx(classes.root, className)}
       size={size}
-      inputMode="decimal"
       {...others}
+      inputMode={isBigIntMode ? 'numeric' : 'decimal'}
       readOnly={readOnly}
       disabled={disabled}
-      value={_value}
+      value={typeof _value === 'bigint' ? _value.toString() : _value}
       getInputRef={useMergedRef(ref, inputRef)}
       onValueChange={handleValueChange}
       rightSection={
-        hideControls || readOnly || !canStep(_value) ? rightSection : rightSection || controls
+        hideControls ||
+        readOnly ||
+        !(isBigIntMode
+          ? canStepBigInt(_value as bigint | string, allowNegativeResolved)
+          : canStep(_value as number | string))
+          ? rightSection
+          : rightSection || controls
       }
       classNames={resolvedClassNames}
       styles={resolvedStyles}
       unstyled={unstyled}
       __staticSelector="NumberInput"
-      decimalScale={allowDecimal ? decimalScale : 0}
+      decimalScale={isBigIntMode ? 0 : allowDecimal ? decimalScale : 0}
       onFocus={handleFocus}
       onKeyDown={handleKeyDown}
       onKeyDownCapture={handleKeyDownCapture}
@@ -582,15 +833,33 @@ export const NumberInput = factory<NumberInputFactory>((_props) => {
       onBlur={handleBlur}
       attributes={attributes}
       isAllowed={(val) => {
-        if (clampBehavior === 'strict') {
-          if (isAllowed) {
-            return isAllowed(val) && isInRange(val.floatValue, min, max);
-          }
-
-          return isInRange(val.floatValue, min, max);
+        const userAllowed = isAllowed ? isAllowed(val) : true;
+        if (!userAllowed) {
+          return false;
         }
 
-        return isAllowed ? isAllowed(val) : true;
+        if (clampBehavior !== 'strict') {
+          return true;
+        }
+
+        if (!isBigIntMode) {
+          return isInRange(val.floatValue, minNumber, maxNumber);
+        }
+
+        if (val.value === '' || val.value === '-') {
+          return true;
+        }
+
+        const parsed = parseBigIntFromString(val.value);
+
+        if (parsed === null) {
+          return true;
+        }
+
+        return (
+          (minBigInt === undefined || parsed >= minBigInt) &&
+          (maxBigInt === undefined || parsed <= maxBigInt)
+        );
       }}
     />
   );

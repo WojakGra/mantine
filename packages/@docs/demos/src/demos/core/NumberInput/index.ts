@@ -17,3 +17,4 @@ export { sections } from './NumberInput.demo.sections';
 export { hold } from './NumberInput.demo.hold';
 export { loading } from './NumberInput.demo.loading';
 export { trimLeadingZeroes } from './NumberInput.demo.trimLeadingZeroes';
+export { bigInt } from './NumberInput.demo.bigInt';

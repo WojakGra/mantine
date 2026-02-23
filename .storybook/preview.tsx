@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { TextAlignLeftIcon, TextAlignRightIcon } from '@phosphor-icons/react';
 import type { Decorator, Preview } from '@storybook/nextjs';
+import { useGlobals } from 'storybook/preview-api';
 import { CodeHighlightAdapterProvider, createShikiAdapter } from '@mantine/code-highlight';
-import { ActionIcon, MantineProvider, useDirection } from '@mantine/core';
+import { ActionIcon, DirectionProvider, MantineProvider, useDirection } from '@mantine/core';
 import { MantineEmotionProvider } from '@mantine/emotion';
 import { ModalsProvider } from '@mantine/modals';
 import { Notifications } from '@mantine/notifications';
@@ -51,6 +52,23 @@ export const parameters = {
 
 function DirectionWrapper({ children }: { children: React.ReactNode }) {
   const { dir, toggleDirection } = useDirection();
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isToggleDirection = event.altKey && event.shiftKey && event.code === 'KeyR';
+
+      if (!isToggleDirection) {
+        return;
+      }
+
+      event.preventDefault();
+      toggleDirection();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [toggleDirection]);
+
   return (
     <>
       <ActionIcon
@@ -84,7 +102,6 @@ async function loadShiki() {
 const shikiAdapter = createShikiAdapter(loadShiki);
 
 export const decorators: Decorator[] = [
-  (renderStory) => <DirectionWrapper>{renderStory()}</DirectionWrapper>,
   (renderStory) => (
     <CodeHighlightAdapterProvider adapter={shikiAdapter}>
       {renderStory()}
@@ -99,12 +116,35 @@ export const decorators: Decorator[] = [
     </ModalsProvider>
   ),
   (renderStory, context) => {
+    const [{ theme: globalTheme }, updateGlobals] = useGlobals();
+
+    useEffect(() => {
+      const onKeyDown = (event: KeyboardEvent) => {
+        const isMod = event.metaKey || event.ctrlKey;
+        const isJ = event.code === 'KeyJ';
+
+        if (!isMod || !isJ) {
+          return;
+        }
+
+        event.preventDefault();
+        updateGlobals({ theme: globalTheme === 'dark' ? 'light' : 'dark' });
+      };
+
+      window.addEventListener('keydown', onKeyDown);
+      return () => window.removeEventListener('keydown', onKeyDown);
+    }, [globalTheme, updateGlobals]);
+
     const scheme = (context.globals.theme || 'light') as 'light' | 'dark';
     return (
-      <MantineProvider theme={theme} forceColorScheme={scheme}>
-        <Notifications zIndex={10000} />
-        <MantineEmotionProvider>{renderStory()}</MantineEmotionProvider>
-      </MantineProvider>
+      <DirectionProvider initialDirection="ltr" detectDirection={false}>
+        <MantineProvider theme={theme} forceColorScheme={scheme}>
+          <Notifications zIndex={10000} />
+          <MantineEmotionProvider>
+            <DirectionWrapper>{renderStory()}</DirectionWrapper>
+          </MantineEmotionProvider>
+        </MantineProvider>
+      </DirectionProvider>
     );
   },
 ];
